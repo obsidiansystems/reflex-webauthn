@@ -13,6 +13,7 @@ library
                , obelisk-backend
                , obelisk-route
                , reflex-webauthn-backend
+               , webauthn
   exposed-modules:
     Backend
   ghc-options: -Wall -Wredundant-constraints -Wincomplete-uni-patterns -Wincomplete-record-updates -O -fno-show-valid-hole-fits

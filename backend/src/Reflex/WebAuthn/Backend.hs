@@ -4,7 +4,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Reflex.WebAuthn.Backend(
-  withWebAuthnBackend
+  withWebAuthnBackend,
+  ModifyCredentialOptionsRegistration,
+  ModifyCredentialOptionsAuthentication
 ) where
 
 import Control.Concurrent.MVar
@@ -53,7 +55,7 @@ defaultRegistrationOptions userName challenge = do
           WA.cueName = WA.UserAccountName userName
         }
   pure $ WA.CredentialOptionsRegistration
-    { WA.corRp = WA.CredentialRpEntity {WA.creId = Nothing, WA.creName = "ACME"},
+    { WA.corRp = WA.CredentialRpEntity {WA.creId = Nothing, WA.creName = ""},
       WA.corUser = userEntity,
       WA.corChallenge = challenge,
       WA.corPubKeyCredParams =
@@ -101,9 +103,11 @@ webAuthnRouteHandler
   -> MVar (M.Map WA.Challenge (WA.CredentialOptions 'WA.Authentication))
   -> WA.Origin
   -> WA.RpIdHash
+  -> ModifyCredentialOptionsRegistration
+  -> ModifyCredentialOptionsAuthentication
   -> R WebAuthnRoute
   -> m ()
-webAuthnRouteHandler pool registerOptionMapVar loginOptionMapVar origin rpIdHash = \case
+webAuthnRouteHandler pool registerOptionMapVar loginOptionMapVar origin rpIdHash modifyRegCredOpts modifyLoginCredOpts = \case
   WebAuthnRoute_Register :/ registerRoute -> case registerRoute of
     RegisterRoute_Begin -> do
       loginDataEither <- getJSON
@@ -113,8 +117,8 @@ webAuthnRouteHandler pool registerOptionMapVar loginOptionMapVar origin rpIdHash
           -- Check if there already is a user by this name
           userExists <- liftIO $ checkIfUserExists pool userName
           when userExists $ finishWithError "User already exists"
-          challenge <- liftIO $ WA.generateChallenge
-          credOpts <- liftIO $ defaultRegistrationOptions userName challenge
+          challenge <- liftIO WA.generateChallenge
+          credOpts <- liftIO $ modifyRegCredOpts <$> defaultRegistrationOptions userName challenge
           liftIO $ writeOptionsToMVar challenge credOpts registerOptionMapVar
           writeLBS $ A.encode $ WA.encodeCredentialOptionsRegistration credOpts
 
@@ -149,7 +153,7 @@ webAuthnRouteHandler pool registerOptionMapVar loginOptionMapVar origin rpIdHash
           when (null credentials) $ finishWithError "User not found, please register first"
 
           challenge <- liftIO WA.generateChallenge
-          let credOpts = defaultAuthenticationOptions challenge credentials
+          let credOpts = modifyLoginCredOpts $ defaultAuthenticationOptions challenge credentials
           liftIO $ writeOptionsToMVar challenge credOpts loginOptionMapVar
           writeLBS $ A.encode $ WA.encodeCredentialOptionsAuthentication credOpts
 
@@ -178,8 +182,11 @@ webAuthnRouteHandler pool registerOptionMapVar loginOptionMapVar origin rpIdHash
             writeLBS "You were logged in."
           WA.SignatureCounterPotentiallyCloned -> finishWithError "Signature Counter Cloned"
 
+type ModifyCredentialOptionsRegistration = WA.CredentialOptions 'WA.Registration -> WA.CredentialOptions 'WA.Registration
+type ModifyCredentialOptionsAuthentication = WA.CredentialOptions 'WA.Authentication -> WA.CredentialOptions 'WA.Authentication
+
 withWebAuthnBackend
-  :: ( webAuthnRouteHandler ~ (R WebAuthnRoute -> Snap ())
+  :: ( webAuthnRouteHandler ~ (ModifyCredentialOptionsRegistration -> ModifyCredentialOptionsAuthentication -> R WebAuthnRoute -> Snap ())
      , serveRouteHandler ~ (R backendRoute -> Snap ())
      , serveType ~ ((R backendRoute -> Snap ()) -> IO ())
      )
