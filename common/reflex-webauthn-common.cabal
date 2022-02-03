@@ -1,0 +1,17 @@
+name: reflex-webauthn-common
+version: 0.1
+cabal-version: >= 1.2
+build-type: Simple
+
+library
+  hs-source-dirs: src
+  build-depends: aeson
+               , base
+               , obelisk-route
+               , mtl
+               , text
+               , universe
+  exposed-modules:
+    Reflex.WebAuthn.Route
+    Reflex.WebAuthn.Types
+  ghc-options: -Wall -Wredundant-constraints -Wincomplete-uni-patterns -Wincomplete-record-updates -O -fno-show-valid-hole-fits
