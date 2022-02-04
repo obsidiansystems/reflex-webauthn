@@ -15,6 +15,7 @@ import Obelisk.Generated.Static
 
 import Reflex.Dom.Core hiding (Error)
 import Reflex.WebAuthn.Frontend
+import Reflex.WebAuthn.Types
 
 import Common.Api
 import Common.Route
@@ -54,6 +55,13 @@ frontendMain = do
   let
     greenText = divClass "correct" . text
     redText = divClass "error" . text
-    finalEv = either redText greenText <$> leftmost [registerEv, loginEv]
+    errorToText = \case
+      Error_Frontend errf -> case errf of
+        FrontendError_NullCredentials -> "NullCredentials"
+        FrontendError_CreatePromiseRejected err -> "CreatePromiseRejected: " <> err
+        FrontendError_GetPromiseRejected err -> "GetPromiseRejected: " <> err
+      Error_Backend errb -> case errb of
+        BackendError err -> err
+    finalEv = either (redText . errorToText) greenText <$> leftmost [registerEv, loginEv]
 
   void $ el "h1" $ widgetHold blank finalEv

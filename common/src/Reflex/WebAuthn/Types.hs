@@ -1,3 +1,4 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -7,28 +8,26 @@
 module Reflex.WebAuthn.Types where
 
 import qualified Data.Aeson as A
+import Data.Aeson.TH
 import qualified Data.Text as T
 
 newtype LoginData = LoginData
   { name :: T.Text }
-  deriving Show
+  deriving (Show, A.ToJSON, A.FromJSON)
 
-instance A.ToJSON LoginData where
-  toJSON (LoginData n) = A.object
-    [ "name" A..= n ]
+data Error
+  = Error_Frontend FrontendError
+  | Error_Backend BackendError
+  deriving Eq
 
-instance A.FromJSON LoginData where
-  parseJSON = A.withObject "LoginData" $ \o -> LoginData
-    <$> o A..: "name"
+data FrontendError
+  = FrontendError_NullCredentials
+  | FrontendError_CreatePromiseRejected T.Text
+  | FrontendError_GetPromiseRejected T.Text
+  deriving Eq
 
-newtype Error = Error T.Text
+newtype BackendError = BackendError T.Text
+  deriving (Eq, A.ToJSON, A.FromJSON)
 
-instance A.ToJSON Error where
-  toJSON (Error err) = A.object ["error" A..= err]
-
-instance A.FromJSON Error where
-  parseJSON = A.withObject "Error" $ \o ->
-    Error <$> o A..: "error"
-
--- webAuthnBaseUrl :: T.Text
--- webAuthnBaseUrl = "webauthn"
+deriveJSON defaultOptions ''Error
+deriveJSON defaultOptions ''FrontendError

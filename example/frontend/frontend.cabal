@@ -13,6 +13,7 @@ library
                , obelisk-executable-config-lookup
                , obelisk-generated-static
                , reflex-dom-core
+               , reflex-webauthn-common
                , reflex-webauthn-frontend
                , text
   exposed-modules:

@@ -35,7 +35,7 @@ import Reflex.WebAuthn.DB.DB
 
 finishWithError :: (MonadSnap m) => T.Text -> m a
 finishWithError err = do
-  writeLBS $ A.encode $ Error err
+  writeLBS $ A.encode $ BackendError err
   getResponse >>= finishWith
 
 -- sendData :: (MonadSnap m, A.ToJSON a) => a -> m ()

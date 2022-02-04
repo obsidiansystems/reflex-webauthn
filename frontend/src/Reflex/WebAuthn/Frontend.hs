@@ -87,7 +87,7 @@ postJSONRequest
   :: (MonadJSM (Performable m), PerformEvent t m, TriggerEvent t m)
   => T.Text
   -> Event t T.Text
-  -> m (Event t (Either T.Text T.Text))
+  -> m (Event t (Either Error T.Text))
 postJSONRequest url postDataEv = do
   let
     xhrEv = postDataEv <&> \postData ->
@@ -105,7 +105,7 @@ postJSONRequest url postDataEv = do
         -- We failed to parse the json as an error, this means we succeeded
         Left _ -> Right jsonText
         -- We successfully parsed the json as an error, this means we got an error!!
-        Right (Error err) -> Left err
+        Right err -> Left $ Error_Backend err
 
 jsonParse :: ToJSVal a0 => a0 -> JSM Object
 jsonParse jsonText = do
@@ -204,7 +204,7 @@ setupWorkflow
   => T.Text
   -> AuthenticatorResponseType
   -> Event t T.Text
-  -> m (Event t (Either T.Text T.Text))
+  -> m (Event t (Either Error T.Text))
 setupWorkflow baseUrl authRespType usernameEv = do
   credentialOptionsEv <- postJSONRequest (baseUrl <> "/begin") $ encodeToText . LoginData <$> usernameEv
 
@@ -231,7 +231,7 @@ setupWorkflow baseUrl authRespType usernameEv = do
           -- In some cases, this promise may be resolved to null.
           wereCredsNull <- ghcjsPure (isNull pkCreds)
           if wereCredsNull
-            then liftIO $ sendFn $ Left "Error: Public Key Credential instance received was null."
+            then liftIO $ sendFn $ Left $ Error_Frontend FrontendError_NullCredentials
             else do
               pkCredsObj <- makeObject pkCreds
 
@@ -242,18 +242,22 @@ setupWorkflow baseUrl authRespType usernameEv = do
               liftIO $ sendFn $ Right str)
         (\err -> do
           errStr <- valToText err
-          liftIO $ sendFn $ Left $ "Public Key Credential operation failed, due to reason:" <> errStr)
+          let
+            failure = case authRespType of
+              Attestation -> FrontendError_CreatePromiseRejected errStr
+              Assertion -> FrontendError_GetPromiseRejected errStr
+          liftIO $ sendFn $ Left $ Error_Frontend failure)
 
 setupRegisterWorkflow
   :: (TriggerEvent t m, PerformEvent t m, MonadJSM (Performable m))
   => T.Text
   -> Event t T.Text
-  -> m (Event t (Either T.Text T.Text))
+  -> m (Event t (Either Error T.Text))
 setupRegisterWorkflow baseUrl usernameEv = setupWorkflow (baseUrl <> "/register") Attestation usernameEv
 
 setupLoginWorkflow
   :: (TriggerEvent t m, PerformEvent t m, MonadJSM (Performable m))
   => T.Text
   -> Event t T.Text
-  -> m (Event t (Either T.Text T.Text))
+  -> m (Event t (Either Error T.Text))
 setupLoginWorkflow baseUrl usernameEv = setupWorkflow (baseUrl <> "/login") Assertion usernameEv
