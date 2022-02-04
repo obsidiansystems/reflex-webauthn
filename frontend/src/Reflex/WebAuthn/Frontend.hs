@@ -30,8 +30,8 @@ s = id
 
 consoleLog :: (MonadJSM m, ToJSVal a0) => a0 -> m ()
 consoleLog t = liftJSM $ do
-  console <- jsg $ T.pack "console"
-  void $ console ^. js1 (T.pack "log") t
+  console <- jsg $ s "console"
+  void $ console ^. js1 (s "log") t
 
 fromBase64UrlString :: ToJSVal value => value -> JSM (Either String (JSM JSVal))
 fromBase64UrlString strVal = do
@@ -75,10 +75,13 @@ getNavigatorCredentials = do
     then Nothing
     else Just creds
 
-jsThen :: (MonadJSM m, MakeObject s) => s -> (JSVal -> JSM ()) -> m JSVal
-jsThen promise accept = liftJSM $ do
-  promise ^. js1 (s "then") (fun $ \_ _ [result] -> do
-    accept result)
+jsThen :: (MonadJSM m, MakeObject s) => s -> (JSVal -> JSM ()) -> (JSVal -> JSM ()) -> m JSVal
+jsThen promise accept reject = liftJSM $ do
+  promise ^. js2 (s "then")
+    (fun $ \_ _ [result] -> do
+      accept result)
+    (fun $ \_ _ [failure] -> do
+      reject failure)
 
 postJSONRequest
   :: (MonadJSM (Performable m), PerformEvent t m, TriggerEvent t m)
@@ -196,7 +199,7 @@ setupWorkflow
   -> Event t T.Text
   -> m (Event t (Either T.Text T.Text))
 setupWorkflow baseUrl authRespType usernameEv = do
-  (publicKeyCredentialEv, sendPublicKeyCredentialJson) <- newTriggerEvent
+  (promiseResolverEv, sendPromiseResolution) <- newTriggerEvent
 
   (workflowBeginErrorEv, workflowBeginEv) <- fmap fanEither $ postJSONRequest (baseUrl <> "/begin") $ encodeToText . LoginData <$> usernameEv
 
@@ -208,17 +211,26 @@ setupWorkflow baseUrl authRespType usernameEv = do
     navCredsMaybe <- getNavigatorCredentials
     forM_ navCredsMaybe $ \navCreds -> do
         promise <- navCreds ^. js1 (getMethod authRespType) wrapperObj
-        promise `jsThen` (\pkCreds -> do
-          pkCredsObj <- makeObject pkCreds
+        jsThen promise (\pkCreds -> do
+          -- In some cases, this promise may be resolved to null.
+          wereCredsNull <- ghcjsPure (isNull pkCreds)
+          if wereCredsNull
+            then liftIO $ sendPromiseResolution $ Left "Error: Public Key Credential instance received was null."
+            else do
+              pkCredsObj <- makeObject pkCreds
 
-          encodedPkCreds <- encodeBase64PublicKeyCredential pkCredsObj authRespType
+              encodedPkCreds <- encodeBase64PublicKeyCredential pkCredsObj authRespType
 
-          str <- jsonStringify encodedPkCreds
+              str <- jsonStringify encodedPkCreds
 
-          liftIO $ sendPublicKeyCredentialJson str
-          )
-  (workflowCompleteErrorEv, workflowCompleteEv) <- fanEither <$> postJSONRequest (baseUrl <> "/complete") publicKeyCredentialEv
-  pure $ leftmost [Left <$> workflowBeginErrorEv, Left <$> workflowCompleteErrorEv, Right <$> workflowCompleteEv]
+              liftIO $ sendPromiseResolution $ Right str
+              ) (\err -> do
+                errStr <- valToText err
+                liftIO $ sendPromiseResolution $ Left $ "Public Key Credential operation failed, due to reason:" <> errStr
+              )
+  let (promiseErrorEv, promiseResultEv) = fanEither promiseResolverEv
+  (workflowCompleteErrorEv, workflowCompleteEv) <- fanEither <$> postJSONRequest (baseUrl <> "/complete") promiseResultEv
+  pure $ leftmost [Left <$> workflowBeginErrorEv, Left <$> promiseErrorEv, Left <$> workflowCompleteErrorEv, Right <$> workflowCompleteEv]
 
 setupRegisterWorkflow
   :: (TriggerEvent t m, PerformEvent t m, MonadJSM (Performable m))
