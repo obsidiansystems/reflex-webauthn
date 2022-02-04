@@ -34,15 +34,3 @@ library
     Reflex.WebAuthn.DB.User
     Reflex.WebAuthn.Backend
   ghc-options: -Wall -Wredundant-constraints -Wincomplete-uni-patterns -Wincomplete-record-updates -O -fno-show-valid-hole-fits
-
--- executable backend
---   main-is: main.hs
---   hs-source-dirs: src-bin
---   ghc-options: -Wall -Wredundant-constraints -Wincomplete-uni-patterns -Wincomplete-record-updates -O -threaded -fno-show-valid-hole-fits
---   if impl(ghcjs)
---     buildable: False
---   build-depends: base
---                , backend
---                , reflex-webauthn-common
---                , reflex-webauthn-frontend
---                , obelisk-backend
