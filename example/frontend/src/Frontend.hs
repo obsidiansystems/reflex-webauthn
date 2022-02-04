@@ -7,6 +7,7 @@
 module Frontend where
 
 import Control.Monad
+import Data.Text (pack)
 import Language.Javascript.JSaddle
 
 import Obelisk.Frontend
@@ -54,14 +55,7 @@ frontendMain = do
 
   let
     greenText = divClass "correct" . text
-    redText = divClass "error" . text
-    errorToText = \case
-      Error_Frontend errf -> case errf of
-        FrontendError_NullCredentials -> "NullCredentials"
-        FrontendError_CreatePromiseRejected err -> "CreatePromiseRejected: " <> err
-        FrontendError_GetPromiseRejected err -> "GetPromiseRejected: " <> err
-      Error_Backend errb -> case errb of
-        BackendError err -> err
-    finalEv = either (redText . errorToText) greenText <$> leftmost [registerEv, loginEv]
+    redText = divClass "error" . text . pack . show
+    finalEv = either redText greenText <$> leftmost [registerEv, loginEv]
 
   void $ el "h1" $ widgetHold blank finalEv

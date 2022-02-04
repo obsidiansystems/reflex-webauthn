@@ -15,6 +15,7 @@ import Control.Lens
 import Control.Monad
 import Control.Monad.IO.Class
 import qualified Data.Aeson as A
+import Data.Bifunctor (first)
 import qualified Data.ByteString.Base64.URL as B64
 import qualified Data.ByteString.Lazy as B
 import qualified Data.Text as T
@@ -56,8 +57,6 @@ toBase64UrlString propVal = do
 copyProperty :: MonadJSM m => Object -> Object -> String -> m ()
 copyProperty = copyPropertyWithModification pure
 
--- copyPropertyWithBase64Url
-
 copyPropertyWithModification :: (ToJSVal a, MonadJSM m) => (JSVal -> JSM a) -> Object -> Object -> String -> m ()
 copyPropertyWithModification f oldObj newObj propName = liftJSM $ do
   propVal <- objGetPropertyByName oldObj propName
@@ -94,18 +93,21 @@ postJSONRequest url postDataEv = do
       XhrRequest "POST" url $ def
         & xhrRequestConfig_sendData .~ postData
         & xhrRequestConfig_headers .~ ("Content-type" =: "application/json")
-  xhrResponseEv <- performRequestAsync xhrEv
-  let
-    responseTextEv = fmapMaybe _xhrResponse_responseText xhrResponseEv
-  pure $ responseTextEv <&> \jsonText ->
-    let
-      errorEither = A.eitherDecodeStrict' $ T.encodeUtf8 jsonText
-    in
-      case errorEither of
-        -- We failed to parse the json as an error, this means we succeeded
-        Left _ -> Right jsonText
-        -- We successfully parsed the json as an error, this means we got an error!!
-        Right err -> Left $ Error_Backend err
+  xhrResponseEv <- performRequestAsyncWithError xhrEv
+  pure $ xhrResponseEv <&> \case
+    Left xhrException -> Left $ Error_Xhr $ XhrError_Exception xhrException
+    Right xhrResponse ->
+      case _xhrResponse_responseText xhrResponse of
+        Nothing -> Left $ Error_Xhr XhrError_NoResponse
+        Just jsonText ->
+          let
+            errorEither = A.eitherDecodeStrict' $ T.encodeUtf8 jsonText
+          in
+            case errorEither of
+              -- We failed to parse the json as an error, this means we succeeded
+              Left _ -> Right jsonText
+              -- We successfully parsed the json as an error, this means we got an error!!
+              Right err -> Left $ Error_Backend err
 
 jsonParse :: ToJSVal a0 => a0 -> JSM Object
 jsonParse jsonText = do
