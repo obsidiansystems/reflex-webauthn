@@ -192,6 +192,13 @@ getMethod = \case
   Attestation -> "create"
   Assertion -> "get"
 
+chainEitherEvents :: (Monad m, Reflex t) => Event t (Either a b) -> (Event t b -> m (Event t (Either a c))) -> m (Event t (Either a c))
+chainEitherEvents event f = do
+  let
+    (err, res) = fanEither event
+  event' <- f res
+  pure $ leftmost [Left <$> err, event']
+
 setupWorkflow
   :: (TriggerEvent t m, PerformEvent t m, MonadJSM (Performable m))
   => T.Text
@@ -199,23 +206,32 @@ setupWorkflow
   -> Event t T.Text
   -> m (Event t (Either T.Text T.Text))
 setupWorkflow baseUrl authRespType usernameEv = do
-  (promiseResolverEv, sendPromiseResolution) <- newTriggerEvent
+  credentialOptionsEv <- postJSONRequest (baseUrl <> "/begin") $ encodeToText . LoginData <$> usernameEv
 
-  (workflowBeginErrorEv, workflowBeginEv) <- fmap fanEither $ postJSONRequest (baseUrl <> "/begin") $ encodeToText . LoginData <$> usernameEv
+  promiseResolverEv <-
+    credentialOptionsEv `chainEitherEvents` \workflowBeginResultEv ->
+      performEventAsync $ processCredentialOptions <$> workflowBeginResultEv
 
-  void $ performEvent $ ffor workflowBeginEv $ \jsonText -> liftJSM $ do
-    credentialOptionsObj <- jsonParse jsonText
 
-    wrapperObj <- decodeBase64Options authRespType credentialOptionsObj
+  promiseResolverEv `chainEitherEvents` (postJSONRequest $ baseUrl <> "/complete")
+  where
+    processCredentialOptions jsonText sendFn = liftJSM $ do
+      credentialOptionsObj <- jsonParse jsonText
 
-    navCredsMaybe <- getNavigatorCredentials
-    forM_ navCredsMaybe $ \navCreds -> do
+      wrapperObj <- decodeBase64Options authRespType credentialOptionsObj
+
+      navCredsMaybe <- getNavigatorCredentials
+      forM_ navCredsMaybe $ \navCreds -> do
         promise <- navCreds ^. js1 (getMethod authRespType) wrapperObj
-        jsThen promise (\pkCreds -> do
+        processCredentialOptionsPromise sendFn promise
+
+    processCredentialOptionsPromise sendFn promise =
+      jsThen promise
+        (\pkCreds -> do
           -- In some cases, this promise may be resolved to null.
           wereCredsNull <- ghcjsPure (isNull pkCreds)
           if wereCredsNull
-            then liftIO $ sendPromiseResolution $ Left "Error: Public Key Credential instance received was null."
+            then liftIO $ sendFn $ Left "Error: Public Key Credential instance received was null."
             else do
               pkCredsObj <- makeObject pkCreds
 
@@ -223,14 +239,10 @@ setupWorkflow baseUrl authRespType usernameEv = do
 
               str <- jsonStringify encodedPkCreds
 
-              liftIO $ sendPromiseResolution $ Right str
-              ) (\err -> do
-                errStr <- valToText err
-                liftIO $ sendPromiseResolution $ Left $ "Public Key Credential operation failed, due to reason:" <> errStr
-              )
-  let (promiseErrorEv, promiseResultEv) = fanEither promiseResolverEv
-  (workflowCompleteErrorEv, workflowCompleteEv) <- fanEither <$> postJSONRequest (baseUrl <> "/complete") promiseResultEv
-  pure $ leftmost [Left <$> workflowBeginErrorEv, Left <$> promiseErrorEv, Left <$> workflowCompleteErrorEv, Right <$> workflowCompleteEv]
+              liftIO $ sendFn $ Right str)
+        (\err -> do
+          errStr <- valToText err
+          liftIO $ sendFn $ Left $ "Public Key Credential operation failed, due to reason:" <> errStr)
 
 setupRegisterWorkflow
   :: (TriggerEvent t m, PerformEvent t m, MonadJSM (Performable m))
