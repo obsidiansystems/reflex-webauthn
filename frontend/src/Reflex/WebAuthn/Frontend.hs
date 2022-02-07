@@ -13,6 +13,7 @@ module Reflex.WebAuthn.Frontend(
 
 import Control.Lens
 import Control.Monad
+import Control.Monad.Except
 import Control.Monad.IO.Class
 import qualified Data.Aeson as A
 import Data.Bifunctor (first)
@@ -60,19 +61,24 @@ copyProperty = copyPropertyWithModification pure
 copyPropertyWithModification :: (ToJSVal a, MonadJSM m) => (JSVal -> JSM a) -> Object -> Object -> String -> m ()
 copyPropertyWithModification f oldObj newObj propName = liftJSM $ do
   propVal <- objGetPropertyByName oldObj propName
-  isPropNull <- ghcjsPure $ isNull propVal
+  isPropNull <- isNullOrUndefined propVal
   newPropVal <- f propVal
   objSetPropertyByName newObj propName $ if isPropNull then pure propVal else toJSVal newPropVal
 
+isNullOrUndefined :: JSVal -> JSM Bool
+isNullOrUndefined val = do
+  b1 <- ghcjsPure $ isUndefined val
+  b2 <- ghcjsPure $ isNull val
+  pure $ b1 || b2
 
-getNavigatorCredentials :: JSM (Maybe JSVal)
-getNavigatorCredentials = do
+getNavigatorCredentials :: ExceptT FrontendError JSM JSVal
+getNavigatorCredentials = ExceptT $ do
   nav <- jsg $ s "navigator"
   creds <- nav ^. js (s "credentials")
-  cond <- ghcjsPure (isNull creds)
+  cond <- isNullOrUndefined creds
   pure $ if cond
-    then Nothing
-    else Just creds
+    then Left FrontendError_BrowserNotSupported
+    else Right creds
 
 jsThen :: (MonadJSM m, MakeObject s) => s -> (JSVal -> JSM ()) -> (JSVal -> JSM ()) -> m JSVal
 jsThen promise accept reject = liftJSM $ do
@@ -109,10 +115,17 @@ postJSONRequest url postDataEv = do
               -- We successfully parsed the json as an error, this means we got an error!!
               Right err -> Left $ Error_Backend err
 
-jsonParse :: ToJSVal a0 => a0 -> JSM Object
-jsonParse jsonText = do
+jsonParse :: ToJSVal a0 => a0 -> ExceptT FrontendError JSM Object
+jsonParse jsonText = ExceptT $ do
+  let
+    jsonErrorHandler :: JSException -> JSM (Either FrontendError Object)
+    jsonErrorHandler = const $ pure $ Left FrontendError_JsonParseSyntaxError
+
   json <- jsg $ s "JSON"
-  json ^. js1 (s "parse") jsonText >>= makeObject
+  
+  flip catch jsonErrorHandler $ do
+    parsedVal <- json ^. js1 (s "parse") jsonText
+    Right <$> makeObject parsedVal
 
 jsonStringify :: ToJSVal a0 => a0 -> JSM T.Text
 jsonStringify object = do
@@ -164,15 +177,15 @@ wrapObjectPublicKey objectToWrap = do
   objSetPropertyByName wrapperObj (s "publicKey") objectToWrap
   pure wrapperObj
 
-decodeBase64Options :: AuthenticatorResponseType -> Object -> JSM Object
-decodeBase64Options authRespType credentialOptionsObj = do
+decodeBase64Options :: AuthenticatorResponseType -> Object -> ExceptT FrontendError JSM Object
+decodeBase64Options authRespType credentialOptionsObj = ExceptT $ do
   decodeBase64Property credentialOptionsObj "challenge"
 
   case authRespType of
     Attestation -> decodeBase64RegistrationOptions credentialOptionsObj
     Assertion -> decodeBase64LoginOptions credentialOptionsObj
 
-  wrapObjectPublicKey credentialOptionsObj
+  Right <$> wrapObjectPublicKey credentialOptionsObj
 
 decodeBase64RegistrationOptions :: Object -> JSM ()
 decodeBase64RegistrationOptions credentialOptionsObj = do
@@ -193,6 +206,37 @@ getMethod :: AuthenticatorResponseType -> String
 getMethod = \case
   Attestation -> "create"
   Assertion -> "get"
+
+checkRequiredProperties :: AuthenticatorResponseType -> Object -> ExceptT FrontendError JSM ()
+checkRequiredProperties authRespType credOpts =
+  case authRespType of
+    Assertion -> validateAssertion
+    Attestation -> validateAttestation
+    where
+      getPropertyIfExists obj name = ExceptT $ do
+        propVal <- objGetPropertyByName obj name
+        isPropNull <- isNullOrUndefined propVal
+        pure $ if isPropNull
+          then Left $ FrontendError_PropertyMissing name
+          else Right propVal
+
+      validateAttestation = do
+        rp <- getPropertyIfExists credOpts "rp" >>= ExceptT . fmap Right . makeObject
+        void $ getPropertyIfExists rp "id"
+
+        user <- getPropertyIfExists credOpts "user" >>= ExceptT . fmap Right . makeObject
+        void $ getPropertyIfExists user "name"
+        void $ getPropertyIfExists user "displayName"
+        void $ getPropertyIfExists user "id"
+
+        void $ getPropertyIfExists credOpts "challenge"
+
+        pubKeyCredParams <- getPropertyIfExists credOpts "pubKeyCredParams" >>= ExceptT . fmap Right . fromJSValUncheckedListOf
+        if null (pubKeyCredParams :: [JSVal])
+          then throwError $ FrontendError_PropertyMissing "pubKeyCredParams"
+          else pure ()
+
+      validateAssertion = void $ getPropertyIfExists credOpts "challenge"
 
 chainEitherEvents :: (Monad m, Reflex t) => Event t (Either a b) -> (Event t b -> m (Event t (Either a c))) -> m (Event t (Either a c))
 chainEitherEvents event f = do
@@ -218,19 +262,18 @@ setupWorkflow baseUrl authRespType usernameEv = do
   promiseResolverEv `chainEitherEvents` (postJSONRequest $ baseUrl <> "/complete")
   where
     processCredentialOptions jsonText sendFn = liftJSM $ do
-      let
-        jsonErrorHandler :: (MonadJSM m) => JSException -> m ()
-        jsonErrorHandler = const $ liftIO $ sendFn $ Left $ Error_Frontend FrontendError_JsonParseSyntaxError
-      flip catch jsonErrorHandler $ do
+      promiseEither <- runExceptT $ do
         credentialOptionsObj <- jsonParse jsonText
+
+        void $ checkRequiredProperties authRespType credentialOptionsObj
 
         wrapperObj <- decodeBase64Options authRespType credentialOptionsObj
 
-        getNavigatorCredentials >>= \case
-          Nothing -> liftIO $ sendFn $ Left $ Error_Frontend FrontendError_BrowserNotSupported
-          Just navCreds -> do
-            promise <- navCreds ^. js1 (getMethod authRespType) wrapperObj
-            void $ processCredentialOptionsPromise sendFn promise
+        navCreds <- getNavigatorCredentials
+        ExceptT $ fmap Right $ navCreds ^. js1 (getMethod authRespType) wrapperObj
+      case promiseEither of
+        Left err -> liftIO $ sendFn $ Left $ Error_Frontend err
+        Right promise -> void $ processCredentialOptionsPromise sendFn promise
 
     processCredentialOptionsPromise sendFn promise =
       jsThen promise
