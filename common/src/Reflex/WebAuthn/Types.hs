@@ -28,6 +28,7 @@ data FrontendError
   | FrontendError_CreatePromiseRejected T.Text
   | FrontendError_GetPromiseRejected T.Text
   | FrontendError_JsonParseSyntaxError
+  | FrontendError_BrowserNotSupported
   deriving (Eq, Show)
 
 data XhrError

@@ -226,10 +226,11 @@ setupWorkflow baseUrl authRespType usernameEv = do
 
         wrapperObj <- decodeBase64Options authRespType credentialOptionsObj
 
-        navCredsMaybe <- getNavigatorCredentials
-        forM_ navCredsMaybe $ \navCreds -> do
-          promise <- navCreds ^. js1 (getMethod authRespType) wrapperObj
-          processCredentialOptionsPromise sendFn promise
+        getNavigatorCredentials >>= \case
+          Nothing -> liftIO $ sendFn $ Left $ Error_Frontend FrontendError_BrowserNotSupported
+          Just navCreds -> do
+            promise <- navCreds ^. js1 (getMethod authRespType) wrapperObj
+            void $ processCredentialOptionsPromise sendFn promise
 
     processCredentialOptionsPromise sendFn promise =
       jsThen promise
