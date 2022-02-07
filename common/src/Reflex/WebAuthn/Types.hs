@@ -27,6 +27,7 @@ data FrontendError
   = FrontendError_NullCredentials
   | FrontendError_CreatePromiseRejected T.Text
   | FrontendError_GetPromiseRejected T.Text
+  | FrontendError_JsonParseSyntaxError
   deriving (Eq, Show)
 
 data XhrError

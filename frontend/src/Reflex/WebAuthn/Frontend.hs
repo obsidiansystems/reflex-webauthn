@@ -218,14 +218,18 @@ setupWorkflow baseUrl authRespType usernameEv = do
   promiseResolverEv `chainEitherEvents` (postJSONRequest $ baseUrl <> "/complete")
   where
     processCredentialOptions jsonText sendFn = liftJSM $ do
-      credentialOptionsObj <- jsonParse jsonText
+      let
+        jsonErrorHandler :: (MonadJSM m) => JSException -> m ()
+        jsonErrorHandler = const $ liftIO $ sendFn $ Left $ Error_Frontend FrontendError_JsonParseSyntaxError
+      flip catch jsonErrorHandler $ do
+        credentialOptionsObj <- jsonParse jsonText
 
-      wrapperObj <- decodeBase64Options authRespType credentialOptionsObj
+        wrapperObj <- decodeBase64Options authRespType credentialOptionsObj
 
-      navCredsMaybe <- getNavigatorCredentials
-      forM_ navCredsMaybe $ \navCreds -> do
-        promise <- navCreds ^. js1 (getMethod authRespType) wrapperObj
-        processCredentialOptionsPromise sendFn promise
+        navCredsMaybe <- getNavigatorCredentials
+        forM_ navCredsMaybe $ \navCreds -> do
+          promise <- navCreds ^. js1 (getMethod authRespType) wrapperObj
+          processCredentialOptionsPromise sendFn promise
 
     processCredentialOptionsPromise sendFn promise =
       jsThen promise
