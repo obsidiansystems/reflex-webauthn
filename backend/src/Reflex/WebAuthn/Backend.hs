@@ -16,6 +16,7 @@ import Crypto.Hash (hash)
 import qualified Crypto.WebAuthn as WA
 import qualified Data.Aeson as A
 import Data.Bifunctor
+import qualified Data.List.NonEmpty as NL
 import qualified Data.Map.Strict as M
 import Data.Pool
 import qualified Data.Text as T
@@ -33,9 +34,9 @@ import Reflex.WebAuthn.Types
 import Reflex.WebAuthn.Route
 import Reflex.WebAuthn.DB.DB
 
-finishWithError :: (MonadSnap m) => T.Text -> m a
+finishWithError :: (MonadSnap m) => BackendError -> m a
 finishWithError err = do
-  writeLBS $ A.encode $ BackendError err
+  writeLBS $ A.encode err
   getResponse >>= finishWith
 
 -- sendData :: (MonadSnap m, A.ToJSON a) => a -> m ()
@@ -112,11 +113,11 @@ webAuthnRouteHandler pool registerOptionMapVar loginOptionMapVar origin rpIdHash
     RegisterRoute_Begin -> do
       loginDataEither <- getJSON
       case loginDataEither of
-        Left err -> finishWithError $ "Could not read username: " <> T.pack err
+        Left err -> finishWithError $ BackendError_CouldNotReadData $ "username: " <> T.pack err
         Right (LoginData userName) -> do
           -- Check if there already is a user by this name
           userExists <- liftIO $ checkIfUserExists pool userName
-          when userExists $ finishWithError "User already exists"
+          when userExists $ finishWithError $ BackendError_DbError DbError_UserAlreadyExists
           challenge <- liftIO WA.generateChallenge
           credOpts <- liftIO $ modifyRegCredOpts <$> defaultRegistrationOptions userName challenge
           liftIO $ writeOptionsToMVar challenge credOpts registerOptionMapVar
@@ -127,14 +128,14 @@ webAuthnRouteHandler pool registerOptionMapVar loginOptionMapVar origin rpIdHash
 
       credential <- first T.pack <$> getJSON
       cred <- case credential >>= WA.decodeCredentialRegistration WA.allSupportedFormats of
-        Left err -> finishWithError err
+        Left err -> finishWithError $ BackendError_CouldNotReadData err
         Right result -> pure result
 
       let challenge = WA.ccdChallenge $ WA.arrClientData $ WA.cResponse cred
       registerOptionMap <- liftIO $ takeMVar registerOptionMapVar
       forM_ (M.lookup challenge registerOptionMap) $ \credOpts -> do
         case WA.verifyRegistrationResponse origin rpIdHash mempty dateTime credOpts cred of
-          Failure nonEmptyErrorList -> finishWithError $ T.pack $ show nonEmptyErrorList
+          Failure nonEmptyErrorList -> finishWithError $ BackendError_RegistrationFailed $ NL.map (T.pack . show) nonEmptyErrorList
           Success registrationResponse -> do
             liftIO $ do
               putMVar registerOptionMapVar $ M.delete challenge registerOptionMap
@@ -146,11 +147,11 @@ webAuthnRouteHandler pool registerOptionMapVar loginOptionMapVar origin rpIdHash
     LoginRoute_Begin -> do
       loginDataEither <- getJSON
       case loginDataEither of
-        Left err -> finishWithError $ "Could not read username: " <> T.pack err
+        Left err -> finishWithError $ BackendError_CouldNotReadData $ "username: " <> T.pack err
         Right (LoginData username) -> do
           liftIO $ print username
           credentials <- liftIO $ getCredentialEntryByUser pool username
-          when (null credentials) $ finishWithError "User not found, please register first"
+          when (null credentials) $ finishWithError $ BackendError_DbError DbError_UserDoesNotExist
 
           challenge <- liftIO WA.generateChallenge
           let credOpts = modifyLoginCredOpts $ defaultAuthenticationOptions challenge credentials
@@ -160,12 +161,12 @@ webAuthnRouteHandler pool registerOptionMapVar loginOptionMapVar origin rpIdHash
     LoginRoute_Complete -> do
       credential <- first T.pack <$> getJSON
       cred <- case credential >>= WA.decodeCredentialAuthentication of
-        Left err -> finishWithError $ "Could not decode credential: " <> err
+        Left err -> finishWithError $ BackendError_CouldNotReadData err
         Right result -> pure result
 
       entryMaybe <- liftIO $ getCredentialEntryByCredentialId pool $ WA.cIdentifier cred
       entry <- case entryMaybe of
-        Nothing -> finishWithError "Credential Entry does not exist"
+        Nothing -> finishWithError BackendError_CredentialEntryDoesNotExist
         Just entry -> pure entry
 
       let challenge = WA.ccdChallenge $ WA.araClientData $ WA.cResponse cred
@@ -173,14 +174,14 @@ webAuthnRouteHandler pool registerOptionMapVar loginOptionMapVar origin rpIdHash
       forM_ (M.lookup challenge loginOptionMap) $ \credOpts -> do
         liftIO $ putMVar loginOptionMapVar $ M.delete challenge loginOptionMap
         WA.AuthenticationResult newSigCount <- case WA.verifyAuthenticationResponse origin rpIdHash (Just (WA.ceUserHandle entry)) entry credOpts cred of
-          Failure nonEmptyErrorList -> finishWithError $ T.pack $ show nonEmptyErrorList
+          Failure nonEmptyErrorList -> finishWithError $ BackendError_AuthenticationFailed $ NL.map (T.pack . show) nonEmptyErrorList
           Success result -> pure result
         case newSigCount of
           WA.SignatureCounterZero -> writeLBS "You were logged in."
           WA.SignatureCounterUpdated counter -> do
             liftIO $ updateSignatureCounter pool (WA.cIdentifier cred) counter
             writeLBS "You were logged in."
-          WA.SignatureCounterPotentiallyCloned -> finishWithError "Signature Counter Cloned"
+          WA.SignatureCounterPotentiallyCloned -> finishWithError BackendError_SignatureCounterCloned
 
 type ModifyCredentialOptionsRegistration = WA.CredentialOptions 'WA.Registration -> WA.CredentialOptions 'WA.Registration
 type ModifyCredentialOptionsAuthentication = WA.CredentialOptions 'WA.Authentication -> WA.CredentialOptions 'WA.Authentication

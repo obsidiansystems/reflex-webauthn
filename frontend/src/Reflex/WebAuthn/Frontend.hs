@@ -213,16 +213,16 @@ checkRequiredProperties authRespType credOpts =
     Assertion -> validateAssertion
     Attestation -> validateAttestation
     where
-      getPropertyIfExists obj name = ExceptT $ do
-        propVal <- objGetPropertyByName obj name
+      getPropertyIfExists object propName = ExceptT $ do
+        propVal <- objGetPropertyByName object propName
         isPropNull <- isNullOrUndefined propVal
         pure $ if isPropNull
-          then Left $ FrontendError_PropertyMissing name
+          then Left $ FrontendError_PropertyMissing propName
           else Right propVal
 
       validateAttestation = do
         rp <- getPropertyIfExists credOpts "rp" >>= ExceptT . fmap Right . makeObject
-        void $ getPropertyIfExists rp "id"
+        void $ getPropertyIfExists rp "name"
 
         user <- getPropertyIfExists credOpts "user" >>= ExceptT . fmap Right . makeObject
         void $ getPropertyIfExists user "name"

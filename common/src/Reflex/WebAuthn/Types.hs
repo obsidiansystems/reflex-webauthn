@@ -9,6 +9,7 @@ module Reflex.WebAuthn.Types where
 
 import qualified Data.Aeson as A
 import Data.Aeson.TH
+import Data.List.NonEmpty
 import qualified Data.Text as T
 
 import Reflex.Dom.Xhr
@@ -37,10 +38,24 @@ data XhrError
   | XhrError_NoResponse
   deriving (Eq, Show)
 
-newtype BackendError = BackendError T.Text
-  deriving (Eq, Show, A.ToJSON, A.FromJSON)
+data BackendError
+  = BackendError_CouldNotReadData T.Text
+  | BackendError_DbError DbError
+  | BackendError_RegistrationFailed (NonEmpty T.Text)
+  | BackendError_AuthenticationFailed (NonEmpty T.Text)
+  | BackendError_CredentialEntryDoesNotExist
+  | BackendError_SignatureCounterCloned
+  deriving (Eq, Show)
+
+data DbError
+  = DbError_UserAlreadyExists
+  | DbError_UserDoesNotExist
+  deriving (Eq, Show)
+
 
 deriveJSON defaultOptions ''Error
 deriveJSON defaultOptions ''FrontendError
 deriveJSON defaultOptions ''XhrException
 deriveJSON defaultOptions ''XhrError
+deriveJSON defaultOptions ''BackendError
+deriveJSON defaultOptions ''DbError
