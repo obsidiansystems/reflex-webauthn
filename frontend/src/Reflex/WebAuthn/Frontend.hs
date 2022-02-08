@@ -1,6 +1,6 @@
 {-|
 Module      : Reflex.WebAuthn.Frontend
-Description : A reflex based implementation of WebAuthn
+Description : Provides functions for setting up frontend workflows for WebAuthn
 Copyright   : (c) Obsidian Systems, 2022
 
 This module provides two functions:
