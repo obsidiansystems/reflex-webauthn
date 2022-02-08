@@ -166,7 +166,7 @@ webAuthnRouteHandler pool registerOptionMapVar loginOptionMapVar origin rpIdHash
 
       entryMaybe <- liftIO $ getCredentialEntryByCredentialId pool $ WA.cIdentifier cred
       entry <- case entryMaybe of
-        Nothing -> finishWithError BackendError_CredentialEntryDoesNotExist
+        Nothing -> finishWithError $ BackendError_DbError DbError_CredentialEntryDoesNotExist
         Just entry -> pure entry
 
       let challenge = WA.ccdChallenge $ WA.araClientData $ WA.cResponse cred
@@ -181,7 +181,7 @@ webAuthnRouteHandler pool registerOptionMapVar loginOptionMapVar origin rpIdHash
           WA.SignatureCounterUpdated counter -> do
             liftIO $ updateSignatureCounter pool (WA.cIdentifier cred) counter
             writeLBS "You were logged in."
-          WA.SignatureCounterPotentiallyCloned -> finishWithError BackendError_SignatureCounterCloned
+          WA.SignatureCounterPotentiallyCloned -> finishWithError BackendError_SignatureCounterPotentiallyCloned
 
 type ModifyCredentialOptionsRegistration = WA.CredentialOptions 'WA.Registration -> WA.CredentialOptions 'WA.Registration
 type ModifyCredentialOptionsAuthentication = WA.CredentialOptions 'WA.Authentication -> WA.CredentialOptions 'WA.Authentication

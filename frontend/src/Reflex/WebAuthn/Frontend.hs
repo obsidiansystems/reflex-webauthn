@@ -130,7 +130,7 @@ postJSONRequest url postDataEv = do
     Left xhrException -> Left $ Error_Xhr $ XhrError_Exception xhrException
     Right xhrResponse ->
       case _xhrResponse_responseText xhrResponse of
-        Nothing -> Left $ Error_Xhr XhrError_NoResponse
+        Nothing -> Left $ Error_Xhr XhrError_NoDataInResponse
         Just jsonText ->
           let
             errorEither = A.eitherDecodeStrict' $ T.encodeUtf8 jsonText

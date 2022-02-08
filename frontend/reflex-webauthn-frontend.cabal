@@ -2,8 +2,8 @@ name: reflex-webauthn-frontend
 version: 0.1
 cabal-version: >= 1.8
 build-type: Simple
-synopsis: Reflex based WebAuthn implementation
-description: Reflex based WebAuthn implementation
+synopsis: Reflex based frontend for WebAuthn implementation
+description: Reflex based frontend for WebAuthn implementation
 license: BSD3
 license-file: LICENSE
 author: Obsidian Systems LLC
