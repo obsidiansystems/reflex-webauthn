@@ -40,9 +40,7 @@ module Reflex.WebAuthn.Frontend(
 import Control.Lens
 import Control.Monad
 import Control.Monad.Except
-import Control.Monad.IO.Class
 import qualified Data.Aeson as A
-import Data.Bifunctor (first)
 import qualified Data.ByteString.Base64.URL as B64
 import qualified Data.ByteString.Lazy as B
 import qualified Data.Text as T
@@ -92,9 +90,9 @@ copyPropertyWithModification f oldObj newObj propName = liftJSM $ do
   objSetPropertyByName newObj propName $ if isPropNull then pure propVal else toJSVal newPropVal
 
 isNullOrUndefined :: JSVal -> JSM Bool
-isNullOrUndefined val = do
-  b1 <- ghcjsPure $ isUndefined val
-  b2 <- ghcjsPure $ isNull val
+isNullOrUndefined value = do
+  b1 <- ghcjsPure $ isUndefined value
+  b2 <- ghcjsPure $ isNull value
   pure $ b1 || b2
 
 getNavigatorCredentials :: ExceptT FrontendError JSM JSVal

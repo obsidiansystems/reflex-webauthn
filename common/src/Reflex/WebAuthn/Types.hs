@@ -46,13 +46,13 @@ data FrontendError
   | FrontendError_PropertyMissing T.Text        -- ^ A required property was missing on an object received from the backend.
   deriving (Eq, Show)
 
--- Represents all request errors
+-- | Represents all request errors
 data XhrError
   = XhrError_Exception XhrException             -- ^ The request itself failed, with an 'XhrException'
   | XhrError_NoDataInResponse                   -- ^ Expected some data in response, but didn't receive any.
   deriving (Eq, Show)
 
--- Represents all backend errors
+-- | Represents all backend errors
 data BackendError
   = BackendError_CouldNotReadData T.Text                  -- ^ Unable to read data sent from the client
   | BackendError_DbError DbError                          -- ^ Encountered a DB error
@@ -61,7 +61,7 @@ data BackendError
   | BackendError_SignatureCounterPotentiallyCloned        -- ^ Signature Counter was potentially cloned
   deriving (Eq, Show)
 
--- Represents all DB errors
+-- | Represents all DB errors
 data DbError
   = DbError_UserAlreadyExists             -- ^ Error during registration, a user with the same name already exists
   | DbError_UserDoesNotExist              -- ^ Error during authentication, user with the given name does not exist

@@ -212,7 +212,7 @@ type ServeRouteHandler route = R route -> Snap ()
 -- | Type of a function that can be passed to 'Obelisk.Backend._backend_run'.
 type RunBackend route = ((R route -> Snap ()) -> IO ()) -> IO ()
 
--- ^ A function that takes a function that handles 'WebAuthnRoute' routes, and returns a function that serves all routes in the 'Snap' Monad.
+-- | A function that takes a function that handles 'WebAuthnRoute' routes, and returns a function that serves all routes in the 'Snap' Monad.
 type WebAuthnBackendHandler route
   = WebAuthnRouteHandler                   -- ^ Function to handle 'WebAuthnRoute' routes
   -> ServeRouteHandler route

@@ -26,13 +26,15 @@ import Data.Universe
 import Obelisk.Route
 import Obelisk.Route.TH
 
+-- | Routes for WebAuthn Registration workflow
 data RegisterRoute
-  = RegisterRoute_Begin
-  | RegisterRoute_Complete
+  = RegisterRoute_Begin     -- ^ Registration Begin, where we provide Credential Options to user
+  | RegisterRoute_Complete  -- ^ Registration Complete, user's credentials have now been stored
   deriving (Show, Eq, Ord, Enum, Bounded)
 
 instance Universe RegisterRoute
 
+-- | The 'Encoder' for the 'RegisterRoute' route.
 registerRouteEncoder
   :: (MonadError Text check, MonadError Text parse)
   => Encoder check parse RegisterRoute PageName
@@ -40,13 +42,15 @@ registerRouteEncoder = enumEncoder $ \case
   RegisterRoute_Begin -> (["begin"], mempty)
   RegisterRoute_Complete -> (["complete"], mempty)
 
+-- | Routes for WebAuthn Authentication workflow
 data LoginRoute
-  = LoginRoute_Begin
-  | LoginRoute_Complete
+  = LoginRoute_Begin      -- ^ Authentication Begin, where we provide Credential Options to user
+  | LoginRoute_Complete   -- ^ Authentication Complete, user has now been authenticated
   deriving (Show, Eq, Ord, Enum, Bounded)
 
 instance Universe LoginRoute
 
+-- | The 'Encoder' for the 'LoginRoute' route.
 loginRouteEncoder
   :: (MonadError Text check, MonadError Text parse)
   => Encoder check parse LoginRoute PageName
@@ -54,9 +58,10 @@ loginRouteEncoder = enumEncoder $ \case
   LoginRoute_Begin -> (["begin"], mempty)
   LoginRoute_Complete -> (["complete"], mempty)
 
+-- | Routes for webauthn, includes both registration and authentication (login)
 data WebAuthnRoute :: * -> * where
-  WebAuthnRoute_Login :: WebAuthnRoute LoginRoute
-  WebAuthnRoute_Register :: WebAuthnRoute RegisterRoute
+  WebAuthnRoute_Login :: WebAuthnRoute LoginRoute         -- ^ Registration Routes
+  WebAuthnRoute_Register :: WebAuthnRoute RegisterRoute   -- ^ Login Routes
 
 deriveRouteComponent ''WebAuthnRoute
 

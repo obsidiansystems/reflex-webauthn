@@ -16,7 +16,6 @@ import Obelisk.Generated.Static
 
 import Reflex.Dom.Core hiding (Error)
 import Reflex.WebAuthn.Frontend
-import Reflex.WebAuthn.Types
 
 import Common.Api
 import Common.Route
