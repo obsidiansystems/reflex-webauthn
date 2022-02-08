@@ -11,7 +11,7 @@ To add these packages to your obelisk project, follow the steps below from your 
 `reflex-webauthn` uses GHC 8.10 due to its dependencies, so you will need to use the same.
 
 Inside your obelisk project root, ensure that `.obelisk/impl/github.json` contains the following:
-```nix
+```json
 {
   "owner": "obsidiansystems",
   "repo": "obelisk",
