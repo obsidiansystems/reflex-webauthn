@@ -1,3 +1,29 @@
+{-|
+Module      : Reflex.WebAuthn.Frontend
+Description : A reflex based implementation of WebAuthn
+Copyright   : (c) Obsidian Systems, 2022
+
+This module provides two functions:
+
+1. 'setupRegisterWorkflow'
+
+2. 'setupLoginWorkflow'
+
+== Url scheme
+This module assumes that routes are defined as per "Reflex.WebAuthn.Route". The entire /webauthn/ route may be a
+part of some other url, that can be taken care of by providing a @baseUrl@ to the functions below.
+
+__TIP__: Use 'Reflex.WebAuthn.Route.webauthnRouteEncoder' to setup webauthn routes on the backend easily.
+
+=== Example
+Suppose that the webauthn routes were setup like this:
+
+http://www.mywebsite.com/example/myurl/webauthn
+
+In this case, the @baseUrl@ would be @example/myurl@.
+
+-}
+
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
@@ -7,8 +33,8 @@
 {-# LANGUAGE StandaloneDeriving #-}
 
 module Reflex.WebAuthn.Frontend(
-  setupLoginWorkflow,
-  setupRegisterWorkflow
+  setupRegisterWorkflow,
+  setupLoginWorkflow
 ) where
 
 import Control.Lens
@@ -298,16 +324,22 @@ setupWorkflow baseUrl authRespType usernameEv = do
               Assertion -> FrontendError_GetPromiseRejected errStr
           liftIO $ sendFn $ Left $ Error_Frontend failure)
 
+-- | This function can be used to setup a reflex-based WebAuthn Registration workflow.
+-- For details on WebAuthn workflows, visit <https://webauthn.guide/>.
 setupRegisterWorkflow
   :: (TriggerEvent t m, PerformEvent t m, MonadJSM (Performable m))
-  => T.Text
-  -> Event t T.Text
-  -> m (Event t (Either Error T.Text))
+  => T.Text                             -- ^ @baseUrl@, refer explanation above
+  -> Event t T.Text                     -- ^ An event containing the username (used for both username and display name)
+  -> m (Event t (Either Error T.Text))  -- ^ If registration failed, returns an 'Error' describing the failure.
+                                        -- In case of success, returns some text.
 setupRegisterWorkflow baseUrl usernameEv = setupWorkflow (baseUrl <> "/register") Attestation usernameEv
 
+-- | This function can be used to setup a reflex-based WebAuthn Authentication workflow.
+-- For details on WebAuthn workflows, visit <https://webauthn.guide/>.
 setupLoginWorkflow
   :: (TriggerEvent t m, PerformEvent t m, MonadJSM (Performable m))
-  => T.Text
-  -> Event t T.Text
-  -> m (Event t (Either Error T.Text))
+  => T.Text                             -- ^ @baseUrl@, refer explanation above
+  -> Event t T.Text                     -- ^ An event containing the username (used for both username and display name)
+  -> m (Event t (Either Error T.Text))  -- ^ If authentication failed, returns an 'Error' describing the failure.
+                                        -- In case of success, returns some text.
 setupLoginWorkflow baseUrl usernameEv = setupWorkflow (baseUrl <> "/login") Assertion usernameEv
