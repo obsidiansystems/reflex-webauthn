@@ -2,6 +2,15 @@ name: reflex-webauthn-backend
 version: 0.1
 cabal-version: >= 1.8
 build-type: Simple
+synopsis: Reflex based backend for WebAuthn implementation
+description: Reflex based backend for WebAuthn implementation
+license: BSD3
+license-file: LICENSE
+author: Obsidian Systems LLC
+copyright: 2022 Obsidian Systems LLC
+maintainer: maintainer@obsidian.systems
+category: Web
+extra-source-files: CHANGELOG.md
 
 library
   hs-source-dirs: src
@@ -29,8 +38,9 @@ library
                , validation
                , webauthn
   exposed-modules:
+    Reflex.WebAuthn.Backend
+  other-modules:
     Reflex.WebAuthn.DB.CredentialEntry
     Reflex.WebAuthn.DB.DB
     Reflex.WebAuthn.DB.User
-    Reflex.WebAuthn.Backend
   ghc-options: -Wall -Wredundant-constraints -Wincomplete-uni-patterns -Wincomplete-record-updates -O -fno-show-valid-hole-fits

@@ -1,12 +1,25 @@
+{-|
+Module      : Reflex.WebAuthn.Backend
+Description : Provides functions for setting up a relying party server for WebAuthn
+Copyright   : (c) Obsidian Systems, 2022
+
+This module provides a backend for Obelisk based WebAuthn projects.
+It has functions that allow developers to customize Credential Options that will be sent to the client.
+-}
+
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Reflex.WebAuthn.Backend(
-  withWebAuthnBackend,
   ModifyCredentialOptionsRegistration,
-  ModifyCredentialOptionsAuthentication
+  ModifyCredentialOptionsAuthentication,
+  WebAuthnRouteHandler,
+  ServeRouteHandler,
+  RunBackend,
+  WebAuthnBackendHandler,
+  withWebAuthnBackend
 ) where
 
 import Control.Concurrent.MVar
@@ -183,17 +196,45 @@ webAuthnRouteHandler pool registerOptionMapVar loginOptionMapVar origin rpIdHash
             writeLBS "You were logged in."
           WA.SignatureCounterPotentiallyCloned -> finishWithError BackendError_SignatureCounterPotentiallyCloned
 
+-- | Type of a function that allows us to modify a Registration Credential Option.
 type ModifyCredentialOptionsRegistration = WA.CredentialOptions 'WA.Registration -> WA.CredentialOptions 'WA.Registration
+-- | Type of a function that allows us to modify an Authentication Credential Option.
 type ModifyCredentialOptionsAuthentication = WA.CredentialOptions 'WA.Authentication -> WA.CredentialOptions 'WA.Authentication
 
+-- | Type of a function that handles 'WebAuthnRoute' routes in the Snap Monad.
+type WebAuthnRouteHandler
+  = ModifyCredentialOptionsRegistration     -- ^ Function to customize __Registration__ Credential Options
+  -> ModifyCredentialOptionsAuthentication  -- ^ Function to customize __Authentication__ Credential Options
+  -> R WebAuthnRoute                        -- ^ The route to match.
+  -> Snap ()
+-- | Type of a function that handles any route in the Snap Monad.
+type ServeRouteHandler route = R route -> Snap ()
+-- | Type of a function that can be passed to 'Obelisk.Backend._backend_run'.
+type RunBackend route = ((R route -> Snap ()) -> IO ()) -> IO ()
+
+-- ^ A function that takes a function that handles 'WebAuthnRoute' routes, and returns a function that serves all routes in the 'Snap' Monad.
+type WebAuthnBackendHandler route
+  = WebAuthnRouteHandler                   -- ^ Function to handle 'WebAuthnRoute' routes
+  -> ServeRouteHandler route
+
+-- | This function can be used as a drop-in replacement for 'Obelisk.Backend._backend_run'.
+--
+-- @
+-- backend :: Backend BackendRoute FrontendRoute
+-- backend = Backend
+--   { _backend_run = withWebAuthnBackend $ \webAuthnRouteHandler -> \case
+--       ... -- Other routes
+--       BackendRoute_WebAuthn :/ webAuthnRoute -> webAuthnRouteHandler modifyRegCredOpts modifyLoginCredOpts webAuthnRoute
+--   , _backend_routeEncoder = ...
+--   }
+-- @
+--
+-- Here @modifyRegCredOpts@ and @modifyLoginCredOpts@ are functions for modifying registration and authentication credential options respectively.
+--
+-- Essentially, this function takes a function, and returns a function. The returned function can be used directly for 'Obelisk.Backend._backend_run'.
 withWebAuthnBackend
-  :: ( webAuthnRouteHandler ~ (ModifyCredentialOptionsRegistration -> ModifyCredentialOptionsAuthentication -> R WebAuthnRoute -> Snap ())
-     , serveRouteHandler ~ (R backendRoute -> Snap ())
-     , serveType ~ ((R backendRoute -> Snap ()) -> IO ())
-     )
-  => (webAuthnRouteHandler -> serveRouteHandler)
-  -> serveType
-  -> IO ()
+  :: WebAuthnBackendHandler backendRoute       -- ^ User provided function, takes 1 argument, which is also a function
+  -> RunBackend backendRoute
 withWebAuthnBackend routeMatcher =
   \serve ->
     withDb "db" $ \pool -> do
