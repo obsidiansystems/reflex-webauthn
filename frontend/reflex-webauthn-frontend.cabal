@@ -1,5 +1,5 @@
 name: reflex-webauthn-frontend
-version: 0.1
+version: 0.1.0.0
 cabal-version: >= 1.8
 build-type: Simple
 synopsis: Reflex based frontend for WebAuthn implementation
